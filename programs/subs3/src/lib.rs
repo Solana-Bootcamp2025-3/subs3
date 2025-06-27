@@ -9,7 +9,58 @@ pub mod subs3 {
 
     /// Initialize the global subscription manager state
     pub fn initialize_manager(ctx: Context<InitializeManager>) -> Result<()> {
-        // TODO
+        let manager = &mut ctx.accounts.subscription_manager;
+        manager.total_providers = 0;
+        manager.total_subscriptions = 0;
+        manager.bump = ctx.bumps.subscription_manager;
+        
+        msg!("Subscription manager initialized with authority: {}", manager.authority);
+        Ok(())
+    }
+
+    /// Create a subscription plan (Provider function)
+    pub fn create_subscription_plan(
+        ctx: Context<CreateSubscriptionPlan>,
+        plan_id: String,
+        name: String,
+        description: String,
+        price_per_period: u64,
+        period_duration_seconds: u64,
+        max_subscribers: Option<u32>,
+    ) -> Result<()> {
+        require!(plan_id.len() <= 32, ErrorCode::PlanIdTooLong);
+        require!(name.len() <= 64, ErrorCode::NameTooLong);
+        require!(description.len() <= 256, ErrorCode::DescriptionTooLong);
+        require!(price_per_period > 0, ErrorCode::InvalidPrice);
+        require!(period_duration_seconds > 0, ErrorCode::InvalidPeriod);
+
+        let plan = &mut ctx.accounts.subscription_plan;
+        let manager = &mut ctx.accounts.subscription_manager;
+        
+        plan.provider = ctx.accounts.provider.key();
+        plan.plan_id = plan_id;
+        plan.name = name;
+        plan.description = description;
+        plan.price_per_period = price_per_period;
+        plan.period_duration_seconds = period_duration_seconds;
+        plan.payment_token = ctx.accounts.payment_token_mint.key();
+        plan.max_subscribers = max_subscribers;
+        plan.current_subscribers = 0;
+        plan.total_revenue = 0;
+        plan.is_active = true;
+        plan.created_at = Clock::get()?.unix_timestamp;
+        plan.bump = ctx.bumps.subscription_plan;
+
+        manager.total_providers += 1;
+
+        emit!(SubscriptionPlanCreated {
+            provider: plan.provider,
+            plan_id: plan.plan_id.clone(),
+            price_per_period: plan.price_per_period,
+            period_duration_seconds: plan.period_duration_seconds,
+            payment_token: plan.payment_token,
+        });
+
         Ok(())
     }
 }
@@ -273,4 +324,29 @@ pub struct Subscription {
     pub total_payments_made: u32,
     pub total_amount_paid: u64,
     pub bump: u8,
+}
+
+// Events
+#[event]
+pub struct SubscriptionPlanCreated {
+    pub provider: Pubkey,
+    pub plan_id: String,
+    pub price_per_period: u64,
+    pub period_duration_seconds: u64,
+    pub payment_token: Pubkey,
+}
+
+// Error codes
+#[error_code]
+pub enum ErrorCode {
+    #[msg("Plan ID is too long")]
+    PlanIdTooLong,
+    #[msg("Name is too long")]
+    NameTooLong,
+    #[msg("Description is too long")]
+    DescriptionTooLong,
+    #[msg("Invalid price - must be greater than 0")]
+    InvalidPrice,
+    #[msg("Invalid period - must be greater than 0")]
+    InvalidPeriod
 }
