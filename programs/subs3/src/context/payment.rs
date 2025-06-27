@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount};
 use crate::state::*;
+use crate::util::constants::*;
 
 #[derive(Accounts)]
 pub struct ProcessPayment<'info> {
@@ -8,7 +9,7 @@ pub struct ProcessPayment<'info> {
         mut,
         has_one = subscriber,
         has_one = subscription_plan,
-        seeds = [b"subscription", subscriber.key().as_ref(), subscription_plan.key().as_ref()],
+        seeds = [SUBSCRIPTION_SEED, subscriber.key().as_ref(), subscription_plan.key().as_ref()],
         bump = subscription.bump
     )]
     pub subscription: Account<'info, Subscription>,
@@ -26,7 +27,7 @@ pub struct ProcessPayment<'info> {
     #[account(
         mut,
         seeds = [
-            b"provider_vault",
+            PROVIDER_VAULT_SEED,
             subscription_plan.provider.as_ref(),
             subscription_plan.plan_id.as_bytes()
         ],
@@ -42,7 +43,7 @@ pub struct ProcessPayment<'info> {
 pub struct WithdrawFunds<'info> {
     #[account(
         has_one = provider,
-        seeds = [b"subscription_plan", provider.key().as_ref(), subscription_plan.plan_id.as_bytes()],
+        seeds = [SUBSCRIPTION_PLAN_SEED, provider.key().as_ref(), subscription_plan.plan_id.as_bytes()],
         bump = subscription_plan.bump
     )]
     pub subscription_plan: Account<'info, SubscriptionPlan>,
@@ -50,7 +51,7 @@ pub struct WithdrawFunds<'info> {
     #[account(
         mut,
         seeds = [
-            b"provider_vault",
+            PROVIDER_VAULT_SEED,
             provider.key().as_ref(),
             subscription_plan.plan_id.as_bytes()
         ],

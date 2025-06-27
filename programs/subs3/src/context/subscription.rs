@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 use crate::state::*;
+use crate::util::constants::*;
 
 #[derive(Accounts)]
 pub struct Subscribe<'info> {
@@ -7,7 +8,7 @@ pub struct Subscribe<'info> {
         init,
         payer = subscriber,
         space = 8 + Subscription::INIT_SPACE,
-        seeds = [b"subscription", subscriber.key().as_ref(), subscription_plan.key().as_ref()],
+        seeds = [SUBSCRIPTION_SEED, subscriber.key().as_ref(), subscription_plan.key().as_ref()],
         bump
     )]
     pub subscription: Account<'info, Subscription>,
@@ -17,7 +18,7 @@ pub struct Subscribe<'info> {
     
     #[account(
         mut,
-        seeds = [b"subscription_manager"],
+        seeds = [SUBSCRIPTION_MANAGER_SEED],
         bump = subscription_manager.bump
     )]
     pub subscription_manager: Account<'info, SubscriptionManager>,
@@ -34,7 +35,7 @@ pub struct CancelSubscription<'info> {
         mut,
         has_one = subscriber,
         has_one = subscription_plan,
-        seeds = [b"subscription", subscriber.key().as_ref(), subscription_plan.key().as_ref()],
+        seeds = [SUBSCRIPTION_SEED, subscriber.key().as_ref(), subscription_plan.key().as_ref()],
         bump = subscription.bump
     )]
     pub subscription: Account<'info, Subscription>,
@@ -44,7 +45,7 @@ pub struct CancelSubscription<'info> {
     
     #[account(
         mut,
-        seeds = [b"subscription_manager"],
+        seeds = [SUBSCRIPTION_MANAGER_SEED],
         bump = subscription_manager.bump
     )]
     pub subscription_manager: Account<'info, SubscriptionManager>,
@@ -58,7 +59,7 @@ pub struct PauseSubscription<'info> {
         mut,
         has_one = subscriber,
         has_one = subscription_plan,
-        seeds = [b"subscription", subscriber.key().as_ref(), subscription_plan.key().as_ref()],
+        seeds = [SUBSCRIPTION_SEED, subscriber.key().as_ref(), subscription_plan.key().as_ref()],
         bump = subscription.bump
     )]
     pub subscription: Account<'info, Subscription>,
@@ -73,7 +74,7 @@ pub struct ResumeSubscription<'info> {
         mut,
         has_one = subscriber,
         has_one = subscription_plan,
-        seeds = [b"subscription", subscriber.key().as_ref(), subscription_plan.key().as_ref()],
+        seeds = [SUBSCRIPTION_SEED, subscriber.key().as_ref(), subscription_plan.key().as_ref()],
         bump = subscription.bump
     )]
     pub subscription: Account<'info, Subscription>,

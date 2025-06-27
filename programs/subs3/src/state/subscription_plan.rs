@@ -1,14 +1,15 @@
 use anchor_lang::prelude::*;
+use crate::util::constants::*;
 
 #[account]
 #[derive(InitSpace)]  
 pub struct SubscriptionPlan {
     pub provider: Pubkey,
-    #[max_len(32)]
+    #[max_len(MAX_PLAN_ID_LENGTH)]
     pub plan_id: String,
-    #[max_len(64)]
+    #[max_len(MAX_NAME_LENGTH)]
     pub name: String,
-    #[max_len(256)]
+    #[max_len(MAX_DESCRIPTION_LENGTH)]
     pub description: String,
     pub price_per_period: u64,
     pub period_duration_seconds: u64,

@@ -9,6 +9,9 @@ pub mod event;
 pub mod error;
 pub mod util;
 
+// Import constants
+use crate::util::constants::*;
+
 // Re-exports for convenience
 pub use state::{SubscriptionManager, SubscriptionPlan, Subscription};
 pub use context::*;
@@ -41,11 +44,18 @@ pub mod subs3 {
         period_duration_seconds: u64,
         max_subscribers: Option<u32>,
     ) -> Result<()> {
-        require!(plan_id.len() <= 32, SubscriptionError::PlanIdTooLong);
-        require!(name.len() <= 64, SubscriptionError::NameTooLong);
-        require!(description.len() <= 256, SubscriptionError::DescriptionTooLong);
+        require!(plan_id.len() <= MAX_PLAN_ID_LENGTH, SubscriptionError::PlanIdTooLong);
+        require!(name.len() <= MAX_NAME_LENGTH, SubscriptionError::NameTooLong);
+        require!(description.len() <= MAX_DESCRIPTION_LENGTH, SubscriptionError::DescriptionTooLong);
         require!(price_per_period > 0, SubscriptionError::InvalidPrice);
-        require!(period_duration_seconds > 0, SubscriptionError::InvalidPeriod);
+        require!(
+            period_duration_seconds >= MIN_PERIOD_DURATION,
+            SubscriptionError::InvalidPeriod
+        );
+        require!(
+            period_duration_seconds <= MAX_PERIOD_DURATION,
+            SubscriptionError::InvalidPeriod
+        );
 
         let plan = &mut ctx.accounts.subscription_plan;
         let manager = &mut ctx.accounts.subscription_manager;

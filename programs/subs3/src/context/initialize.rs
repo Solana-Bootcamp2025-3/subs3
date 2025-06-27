@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount};
 use crate::state::*;
+use crate::util::constants::*;
 
 #[derive(Accounts)]
 pub struct InitializeManager<'info> {
@@ -8,7 +9,7 @@ pub struct InitializeManager<'info> {
         init,
         payer = authority,
         space = 8 + SubscriptionManager::INIT_SPACE,
-        seeds = [b"subscription_manager"],
+        seeds = [SUBSCRIPTION_MANAGER_SEED],
         bump
     )]
     pub subscription_manager: Account<'info, SubscriptionManager>,
@@ -26,14 +27,14 @@ pub struct CreateSubscriptionPlan<'info> {
         init,
         payer = provider,
         space = 8 + SubscriptionPlan::INIT_SPACE,
-        seeds = [b"subscription_plan", provider.key().as_ref(), plan_id.as_bytes()],
+        seeds = [SUBSCRIPTION_PLAN_SEED, provider.key().as_ref(), plan_id.as_bytes()],
         bump
     )]
     pub subscription_plan: Account<'info, SubscriptionPlan>,
     
     #[account(
         mut,
-        seeds = [b"subscription_manager"],
+        seeds = [SUBSCRIPTION_MANAGER_SEED],
         bump = subscription_manager.bump
     )]
     pub subscription_manager: Account<'info, SubscriptionManager>,
@@ -43,7 +44,7 @@ pub struct CreateSubscriptionPlan<'info> {
         payer = provider,
         token::mint = payment_token_mint,
         token::authority = provider_vault,
-        seeds = [b"provider_vault", provider.key().as_ref(), plan_id.as_bytes()],
+        seeds = [PROVIDER_VAULT_SEED, provider.key().as_ref(), plan_id.as_bytes()],
         bump
     )]
     pub provider_vault: Account<'info, TokenAccount>,
