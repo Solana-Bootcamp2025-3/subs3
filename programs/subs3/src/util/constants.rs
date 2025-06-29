@@ -20,3 +20,6 @@ pub const SUBSCRIPTION_SEED: &[u8] = b"subscription";
 
 // Provider vault seed
 pub const PROVIDER_VAULT_SEED: &[u8] = b"provider_vault";
+
+// Payment grace period (5 minutes in seconds) - allows for small timing discrepancies
+pub const PAYMENT_GRACE_PERIOD: i64 = 300;

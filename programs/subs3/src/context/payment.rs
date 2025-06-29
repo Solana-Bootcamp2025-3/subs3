@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount};
 use crate::state::*;
+use crate::error::*;
 use crate::util::constants::*;
 
 #[derive(Accounts)]
@@ -20,7 +21,8 @@ pub struct ProcessPayment<'info> {
     #[account(
         mut,
         constraint = subscriber_token_account.owner == subscriber.key(),
-        constraint = subscriber_token_account.mint == subscription_plan.payment_token
+        constraint = subscriber_token_account.mint == subscription_plan.payment_token,
+        constraint = subscriber_token_account.amount >= subscription_plan.price_per_period @ SubscriptionError::InsufficientFunds
     )]
     pub subscriber_token_account: Account<'info, TokenAccount>,
     

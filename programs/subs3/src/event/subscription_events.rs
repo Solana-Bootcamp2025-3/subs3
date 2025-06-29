@@ -23,6 +23,7 @@ pub struct PaymentProcessed {
     pub subscription_plan: Pubkey,
     pub amount: u64,
     pub payment_number: u32,
+    pub payment_nonce: u64,
     pub next_payment_due: i64,
 }
 

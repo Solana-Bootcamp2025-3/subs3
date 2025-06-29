@@ -15,5 +15,15 @@ pub enum SubscriptionError {
     #[msg("Subscription plan is inactive")]
     PlanInactive,
     #[msg("Plan has reached maximum subscriber capacity")]
-    PlanAtCapacity
+    PlanAtCapacity,
+    #[msg("Subscription is inactive")]
+    SubscriptionInactive,
+    #[msg("Subscription is paused")]
+    SubscriptionPaused,
+    #[msg("Payment is not due yet")]
+    PaymentNotDue,
+    #[msg("Insufficient funds for payment")]
+    InsufficientFunds,
+    #[msg("Arithmetic overflow detected")]
+    ArithmeticOverflow,
 }

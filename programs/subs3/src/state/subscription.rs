@@ -13,5 +13,6 @@ pub struct Subscription {
     pub cancelled_at: Option<i64>,
     pub total_payments_made: u32,
     pub total_amount_paid: u64,
+    pub payment_nonce: u64,
     pub bump: u8,
 }
