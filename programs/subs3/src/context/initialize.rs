@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount};
 use crate::state::*;
+use crate::error::*;
 use crate::util::constants::*;
 
 #[derive(Accounts)]
@@ -14,7 +15,10 @@ pub struct InitializeManager<'info> {
     )]
     pub subscription_manager: Account<'info, SubscriptionManager>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = authority.key() != Pubkey::default() @ SubscriptionError::Unauthorized
+    )]
     pub authority: Signer<'info>,
     
     pub system_program: Program<'info, System>,
@@ -34,6 +38,7 @@ pub struct CreateSubscriptionPlan<'info> {
     
     #[account(
         mut,
+        constraint = subscription_manager.authority != Pubkey::default() @ SubscriptionError::Unauthorized,
         seeds = [SUBSCRIPTION_MANAGER_SEED],
         bump = subscription_manager.bump
     )]
@@ -43,13 +48,17 @@ pub struct CreateSubscriptionPlan<'info> {
         init,
         payer = provider,
         token::mint = payment_token_mint,
-        token::authority = provider_vault,
+        token::authority = subscription_plan,
         seeds = [PROVIDER_VAULT_SEED, provider.key().as_ref(), plan_id.as_bytes()],
         bump
     )]
     pub provider_vault: Account<'info, TokenAccount>,
     
     /// CHECK: This is the mint for the payment token (e.g., USDC)
+    /// Must be a valid SPL Token mint account
+    #[account(
+        constraint = payment_token_mint.owner == &anchor_spl::token::ID @ SubscriptionError::InvalidTokenMint
+    )]
     pub payment_token_mint: AccountInfo<'info>,
     
     #[account(mut)]

@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 use crate::state::*;
+use crate::error::*;
 use crate::util::constants::*;
 
 #[derive(Accounts)]
@@ -13,7 +14,12 @@ pub struct Subscribe<'info> {
     )]
     pub subscription: Account<'info, Subscription>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = subscription_plan.is_active @ SubscriptionError::PlanInactive,
+        seeds = [SUBSCRIPTION_PLAN_SEED, subscription_plan.provider.as_ref(), subscription_plan.plan_id.as_bytes()],
+        bump = subscription_plan.bump
+    )]
     pub subscription_plan: Account<'info, SubscriptionPlan>,
     
     #[account(

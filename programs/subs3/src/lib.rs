@@ -24,6 +24,7 @@ pub mod subs3 {
     /// Initialize the global subscription manager state
     pub fn initialize_manager(ctx: Context<InitializeManager>) -> Result<()> {
         let manager = &mut ctx.accounts.subscription_manager;
+        manager.authority = ctx.accounts.authority.key();
         manager.total_providers = 0;
         manager.total_subscriptions = 0;
         manager.bump = ctx.bumps.subscription_manager;
@@ -72,7 +73,9 @@ pub mod subs3 {
         plan.created_at = Clock::get()?.unix_timestamp;
         plan.bump = ctx.bumps.subscription_plan;
 
-        manager.total_providers += 1;
+        manager.total_providers = manager.total_providers
+            .checked_add(1)
+            .ok_or(SubscriptionError::ArithmeticOverflow)?;
 
         emit!(SubscriptionPlanCreated {
             provider: plan.provider,
@@ -91,13 +94,29 @@ pub mod subs3 {
         let subscription = &mut ctx.accounts.subscription;
         let manager = &mut ctx.accounts.subscription_manager;
         
-        require!(plan.is_active, SubscriptionError::PlanInactive);
+        // Ensure subscription account is being initialized fresh
+        require!(
+            subscription.subscriber == Pubkey::default(),
+            SubscriptionError::SubscriptionAlreadyExists
+        );
+        
+        // Prevent providers from subscribing to their own plans
+        require!(
+            ctx.accounts.subscriber.key() != plan.provider,
+            SubscriptionError::Unauthorized
+        );
         
         if let Some(max_subs) = plan.max_subscribers {
             require!(plan.current_subscribers < max_subs, SubscriptionError::PlanAtCapacity);
         }
 
         let clock = Clock::get()?;
+        
+        // Validate that plan timing is reasonable
+        require!(
+            clock.unix_timestamp.checked_add(plan.period_duration_seconds).is_some(),
+            SubscriptionError::ArithmeticOverflow
+        );
         
         subscription.subscriber = ctx.accounts.subscriber.key();
         subscription.subscription_plan = plan.key();
@@ -110,8 +129,12 @@ pub mod subs3 {
         subscription.payment_nonce = 0;
         subscription.bump = ctx.bumps.subscription;
 
-        plan.current_subscribers += 1;
-        manager.total_subscriptions += 1;
+        plan.current_subscribers = plan.current_subscribers
+            .checked_add(1)
+            .ok_or(SubscriptionError::ArithmeticOverflow)?;
+        manager.total_subscriptions = manager.total_subscriptions
+            .checked_add(1)
+            .ok_or(SubscriptionError::ArithmeticOverflow)?;
 
         emit!(SubscriptionCreated {
             subscriber: subscription.subscriber,
