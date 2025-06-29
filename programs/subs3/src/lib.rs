@@ -9,9 +9,6 @@ pub mod event;
 pub mod error;
 pub mod util;
 
-// Import constants
-use crate::util::constants::*;
-
 // Re-exports for convenience
 pub use state::{SubscriptionManager, SubscriptionPlan, Subscription};
 pub use context::*;
@@ -41,7 +38,7 @@ pub mod subs3 {
         name: String,
         description: String,
         price_per_period: u64,
-        period_duration_seconds: u64,
+        period_duration_seconds: i64,
         max_subscribers: Option<u32>,
     ) -> Result<()> {
         require!(plan_id.len() <= MAX_PLAN_ID_LENGTH, SubscriptionError::PlanIdTooLong);
@@ -82,6 +79,43 @@ pub mod subs3 {
             price_per_period: plan.price_per_period,
             period_duration_seconds: plan.period_duration_seconds,
             payment_token: plan.payment_token,
+        });
+
+        Ok(())
+    }
+
+    /// Subscribe to a plan (Subscriber function)
+    pub fn subscribe(ctx: Context<Subscribe>) -> Result<()> {
+        let plan = &mut ctx.accounts.subscription_plan;
+        let subscription = &mut ctx.accounts.subscription;
+        let manager = &mut ctx.accounts.subscription_manager;
+        
+        require!(plan.is_active, SubscriptionError::PlanInactive);
+        
+        if let Some(max_subs) = plan.max_subscribers {
+            require!(plan.current_subscribers < max_subs, SubscriptionError::PlanAtCapacity);
+        }
+
+        let clock = Clock::get()?;
+        
+        subscription.subscriber = ctx.accounts.subscriber.key();
+        subscription.subscription_plan = plan.key();
+        subscription.start_time = clock.unix_timestamp;
+        subscription.next_payment_due = clock.unix_timestamp + plan.period_duration_seconds;
+        subscription.is_active = true;
+        subscription.is_paused = false;
+        subscription.total_payments_made = 0;
+        subscription.total_amount_paid = 0;
+        subscription.bump = ctx.bumps.subscription;
+
+        plan.current_subscribers += 1;
+        manager.total_subscriptions += 1;
+
+        emit!(SubscriptionCreated {
+            subscriber: subscription.subscriber,
+            subscription_plan: subscription.subscription_plan,
+            start_time: subscription.start_time,
+            next_payment_due: subscription.next_payment_due,
         });
 
         Ok(())

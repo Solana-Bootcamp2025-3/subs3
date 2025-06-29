@@ -12,7 +12,7 @@ pub struct SubscriptionPlan {
     #[max_len(MAX_DESCRIPTION_LENGTH)]
     pub description: String,
     pub price_per_period: u64,
-    pub period_duration_seconds: u64,
+    pub period_duration_seconds: i64,
     pub payment_token: Pubkey,
     pub max_subscribers: Option<u32>,
     pub current_subscribers: u32,

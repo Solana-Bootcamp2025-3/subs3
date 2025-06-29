@@ -4,10 +4,10 @@ pub const MAX_NAME_LENGTH: usize = 64;
 pub const MAX_DESCRIPTION_LENGTH: usize = 256;
 
 // Minimum period duration (1 hour in seconds)
-pub const MIN_PERIOD_DURATION: u64 = 3600;
+pub const MIN_PERIOD_DURATION: i64 = 3600;
 
 // Maximum period duration (1 year in seconds)
-pub const MAX_PERIOD_DURATION: u64 = 31_536_000;
+pub const MAX_PERIOD_DURATION: i64 = 31_536_000;
 
 // Subscription manager seed
 pub const SUBSCRIPTION_MANAGER_SEED: &[u8] = b"subscription_manager";

@@ -11,5 +11,9 @@ pub enum SubscriptionError {
     #[msg("Invalid price - must be greater than 0")]
     InvalidPrice,
     #[msg("Invalid period - must be greater than 0")]
-    InvalidPeriod
+    InvalidPeriod,
+    #[msg("Subscription plan is inactive")]
+    PlanInactive,
+    #[msg("Plan has reached maximum subscriber capacity")]
+    PlanAtCapacity
 }
