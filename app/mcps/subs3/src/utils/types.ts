@@ -44,3 +44,23 @@ export interface SubscriptionPlanInfo {
   address: string;
   data: SubscriptionPlanData;
 }
+
+export interface SubscriptionData {
+  subscriber: PublicKey;
+  subscriptionPlan: PublicKey;
+  startTime: BN;
+  nextPaymentDue: BN;
+  isActive: boolean;
+  isPaused: boolean;
+  pausedAt: BN | null;
+  cancelledAt: BN | null;
+  totalPaymentsMade: number;
+  totalAmountPaid: BN;
+  paymentNonce: BN;
+  bump: number;
+}
+
+export interface SubscriptionInfo {
+  address: string;
+  data: SubscriptionData;
+}

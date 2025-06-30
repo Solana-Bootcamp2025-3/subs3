@@ -9,12 +9,15 @@ import {
   CreateSubscriptionPlanParams, 
   SubscriptionPlanData, 
   SubscriptionManagerData,
-  SubscriptionPlanInfo 
+  SubscriptionPlanInfo,
+  SubscriptionData,
+  SubscriptionInfo
 } from "../utils/types";
 import { 
   getSubscriptionManagerPda, 
   getSubscriptionPlanPda, 
   getProviderVaultPda,
+  getSubscriptionPda,
   toPublicKey,
   validatePlanId,
   validatePrice,
@@ -221,5 +224,148 @@ export class SolanaSubscriptionClient {
    */
   getWalletAddress(): string {
     return this.wallet.publicKey.toBase58();
+  }
+
+  /**
+   * Subscribe to a subscription plan
+   */
+  async subscribe(planAddress: string): Promise<{
+    signature: string;
+    subscriptionAddress: string;
+    startTime: number;
+    nextPaymentDue: number;
+  }> {
+    const planPda = toPublicKey(planAddress);
+    const [subscriptionPda] = getSubscriptionPda(
+      this.wallet.publicKey,
+      planPda,
+      this.programId
+    );
+    const [subscriptionManagerPda] = getSubscriptionManagerPda(this.programId);
+
+    try {
+      const signature = await this.program.methods
+        .subscribe()
+        .accountsStrict({
+          subscription: subscriptionPda,
+          subscriptionPlan: planPda,
+          subscriptionManager: subscriptionManagerPda,
+          subscriber: this.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      // Get the created subscription to return timing info
+      const subscription = await this.program.account.subscription.fetch(subscriptionPda);
+      
+      return {
+        signature,
+        subscriptionAddress: subscriptionPda.toBase58(),
+        startTime: subscription.startTime.toNumber(),
+        nextPaymentDue: subscription.nextPaymentDue.toNumber()
+      };
+    } catch (error) {
+      throw new Error(`Failed to subscribe: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Process payment for a subscription
+   */
+  async processPayment(subscriptionAddress: string, subscriberTokenAccount: string): Promise<{
+    signature: string;
+    amount: string;
+    paymentNumber: number;
+    nextPaymentDue: number;
+  }> {
+    const subscriptionPda = toPublicKey(subscriptionAddress);
+    const subscriberTokenPda = toPublicKey(subscriberTokenAccount);
+
+    try {
+      // First get the subscription to find the plan
+      const subscription = await this.program.account.subscription.fetch(subscriptionPda);
+      const plan = await this.program.account.subscriptionPlan.fetch(subscription.subscriptionPlan);
+      
+      // Get provider vault PDA
+      const [providerVaultPda] = getProviderVaultPda(
+        plan.provider,
+        plan.planId,
+        this.programId
+      );
+
+      const signature = await this.program.methods
+        .processPayment()
+        .accountsStrict({
+          subscription: subscriptionPda,
+          subscriptionPlan: subscription.subscriptionPlan,
+          subscriberTokenAccount: subscriberTokenPda,
+          providerVault: providerVaultPda,
+          subscriber: this.wallet.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .rpc();
+
+      // Get updated subscription for payment info
+      const updatedSubscription = await this.program.account.subscription.fetch(subscriptionPda);
+      
+      return {
+        signature,
+        amount: plan.pricePerPeriod.toString(),
+        paymentNumber: updatedSubscription.totalPaymentsMade,
+        nextPaymentDue: updatedSubscription.nextPaymentDue.toNumber()
+      };
+    } catch (error) {
+      throw new Error(`Failed to process payment: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Get subscription data
+   */
+  async getSubscription(subscriptionAddress: string): Promise<SubscriptionData> {
+    const subscriptionPda = toPublicKey(subscriptionAddress);
+    
+    try {
+      return await this.program.account.subscription.fetch(subscriptionPda) as SubscriptionData;
+    } catch (error) {
+      throw new Error(`Failed to fetch subscription: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Get all subscriptions for a subscriber
+   */
+  async getSubscriberSubscriptions(subscriberAddress?: string): Promise<SubscriptionInfo[]> {
+    const subscriber = subscriberAddress ? toPublicKey(subscriberAddress) : this.wallet.publicKey;
+    
+    try {
+      const subscriptions = await this.program.account.subscription.all([
+        {
+          memcmp: {
+            offset: 8, // After discriminator
+            bytes: subscriber.toBase58(),
+          },
+        },
+      ]);
+
+      return subscriptions.map((sub: any) => ({
+        address: sub.publicKey.toBase58(),
+        data: sub.account as SubscriptionData
+      }));
+    } catch (error) {
+      throw new Error(`Failed to fetch subscriber subscriptions: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Get subscription PDA address
+   */
+  getSubscriptionAddress(subscriber: string, planAddress: string): string {
+    const [subscriptionPda] = getSubscriptionPda(
+      toPublicKey(subscriber),
+      toPublicKey(planAddress),
+      this.programId
+    );
+    return subscriptionPda.toBase58();
   }
 }

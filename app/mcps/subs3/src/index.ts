@@ -13,7 +13,12 @@ import {
   GetSubscriptionManagerSchema,
   GetSubscriptionPlanSchema,
   GetProviderPlansSchema,
-  GetPlanAddressSchema
+  GetPlanAddressSchema,
+  SubscribeSchema,
+  ProcessPaymentSchema,
+  GetSubscriptionSchema,
+  GetSubscriberSubscriptionsSchema,
+  GetSubscriptionAddressSchema
 } from "./tools/subscription-tools.js";
 import { SolanaConfig } from "./utils/types.js";
 
@@ -26,6 +31,14 @@ const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
 if (missingEnvVars.length > 0) {
   console.error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
+  process.exit(1);
+}
+
+// Validate RPC URL format
+const rpcUrl = process.env.SOLANA_RPC_URL!;
+if (!rpcUrl.startsWith('http://') && !rpcUrl.startsWith('https://')) {
+  console.error(`Invalid SOLANA_RPC_URL: "${rpcUrl}". URL must start with http:// or https://`);
+  console.error('Example: http://localhost:8899 or https://api.mainnet-beta.solana.com');
   process.exit(1);
 }
 
@@ -100,6 +113,31 @@ server.setRequestHandler(
           name: "get_wallet_info",
           description: "Get information about the current wallet being used as provider.",
           inputSchema: zodToJsonSchema(InitializeManagerSchema), // Empty schema
+        },
+        {
+          name: "subscribe",
+          description: "Subscribe to a subscription plan. Creates a new subscription for the current wallet.",
+          inputSchema: zodToJsonSchema(SubscribeSchema),
+        },
+        {
+          name: "process_payment",
+          description: "Process a payment for an existing subscription. Can be called by anyone when payment is due.",
+          inputSchema: zodToJsonSchema(ProcessPaymentSchema),
+        },
+        {
+          name: "get_subscription",
+          description: "Get detailed information about a specific subscription by its address.",
+          inputSchema: zodToJsonSchema(GetSubscriptionSchema),
+        },
+        {
+          name: "get_subscriber_subscriptions",
+          description: "Get all subscriptions for a subscriber (defaults to current wallet if no address specified).",
+          inputSchema: zodToJsonSchema(GetSubscriberSubscriptionsSchema),
+        },
+        {
+          name: "get_subscription_address",
+          description: "Calculate the program-derived address (PDA) for a subscription given subscriber and plan address.",
+          inputSchema: zodToJsonSchema(GetSubscriptionAddressSchema),
         }
       ]
     }
@@ -170,6 +208,46 @@ server.setRequestHandler(
 
         case "get_wallet_info": {
           const result = subscriptionTools.getWalletInfo();
+          return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          };
+        }
+
+        case "subscribe": {
+          const args = SubscribeSchema.parse(request.params.arguments);
+          const result = await subscriptionTools.subscribe(args);
+          return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          };
+        }
+
+        case "process_payment": {
+          const args = ProcessPaymentSchema.parse(request.params.arguments);
+          const result = await subscriptionTools.processPayment(args);
+          return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          };
+        }
+
+        case "get_subscription": {
+          const args = GetSubscriptionSchema.parse(request.params.arguments);
+          const result = await subscriptionTools.getSubscription(args);
+          return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          };
+        }
+
+        case "get_subscriber_subscriptions": {
+          const args = GetSubscriberSubscriptionsSchema.parse(request.params.arguments);
+          const result = await subscriptionTools.getSubscriberSubscriptions(args);
+          return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          };
+        }
+
+        case "get_subscription_address": {
+          const args = GetSubscriptionAddressSchema.parse(request.params.arguments);
+          const result = await subscriptionTools.getSubscriptionAddress(args);
           return {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
           };

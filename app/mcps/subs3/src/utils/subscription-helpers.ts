@@ -39,6 +39,20 @@ export function getProviderVaultPda(
 }
 
 /**
+ * Generate subscription PDA
+ */
+export function getSubscriptionPda(
+  subscriber: PublicKey,
+  subscriptionPlan: PublicKey,
+  programId: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("subscription"), subscriber.toBuffer(), subscriptionPlan.toBuffer()],
+    programId
+  );
+}
+
+/**
  * Validate Solana public key
  */
 export function validatePublicKey(key: string): boolean {
