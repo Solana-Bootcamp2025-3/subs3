@@ -223,4 +223,42 @@ pub mod subs3 {
 
         Ok(())
     }
+
+    /// Withdraw funds from the provider vault
+    /// Allows providers to withdraw accumulated revenue from their vault
+    pub fn withdraw_funds(ctx: Context<WithdrawFunds>, amount: u64) -> Result<()> {
+        let plan = &ctx.accounts.subscription_plan;
+        let provider_vault = &ctx.accounts.provider_vault;
+        let provider = &ctx.accounts.provider;
+
+        // Ensure the provider is authorized to withdraw funds
+        require!(provider.key() == plan.provider, SubscriptionError::Unauthorized);
+
+        // Ensure the vault has sufficient funds
+        let vault_balance = provider_vault.amount;
+        require!(vault_balance >= amount, SubscriptionError::InsufficientFunds);
+
+        // Transfer tokens from provider vault to provider's token account
+        let transfer_instruction = Transfer {
+            from: provider_vault.to_account_info(),
+            to: ctx.accounts.provider_token_account.to_account_info(),
+            authority: ctx.accounts.provider_vault.to_account_info(),
+        };
+
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                transfer_instruction,
+            ),
+            amount,
+        )?;
+
+        emit!(SubscriptionFundsWithdrawn {
+            provider: provider.key(),
+            subscription_plan: plan.key(),
+            amount,
+        });
+
+        Ok(())
+    }
 }
