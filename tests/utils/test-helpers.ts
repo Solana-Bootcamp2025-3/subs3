@@ -13,7 +13,19 @@ import {
 } from "@solana/spl-token";
 import * as anchor from "@coral-xyz/anchor";
 import { Program, BN } from "@coral-xyz/anchor";
-import type { Subs3 } from "../target/types/subs3";
+import type { Subs3 } from "../../target/types/subs3";
+import {
+  SUBSCRIPTION_MANAGER_SEED,
+  SUBSCRIPTION_PLAN_SEED,
+  SUBSCRIPTION_SEED,
+  PROVIDER_VAULT_SEED,
+  TEST_PLAN_ID,
+  DEFAULT_PRICE_PER_PERIOD,
+  THIRTY_DAYS_SECONDS,
+  DEFAULT_MAX_SUBSCRIBERS,
+  TOKEN_MINT_AMOUNT,
+  SOL_AIRDROP_AMOUNT
+} from "./constants";
 
 export interface TestSetup {
   connection: Connection;
@@ -39,12 +51,12 @@ export interface TestPlanParams {
 }
 
 export const DEFAULT_TEST_PLAN: TestPlanParams = {
-  planId: "test-plan",
+  planId: TEST_PLAN_ID,
   name: "Test Subscription Plan",
   description: "A test subscription plan",
-  pricePerPeriod: new BN(1000000), // 1 USDC
-  periodDurationSeconds: new BN(2592000), // 30 days
-  maxSubscribers: 100
+  pricePerPeriod: new BN(DEFAULT_PRICE_PER_PERIOD),
+  periodDurationSeconds: new BN(THIRTY_DAYS_SECONDS),
+  maxSubscribers: DEFAULT_MAX_SUBSCRIBERS
 };
 
 /**
@@ -65,8 +77,8 @@ export async function createTestAccounts(
 
   // Fund accounts
   const [providerAirdrop, subscriberAirdrop] = await Promise.all([
-    connection.requestAirdrop(provider.publicKey, 2 * LAMPORTS_PER_SOL),
-    connection.requestAirdrop(subscriber.publicKey, 2 * LAMPORTS_PER_SOL)
+    connection.requestAirdrop(provider.publicKey, SOL_AIRDROP_AMOUNT),
+    connection.requestAirdrop(subscriber.publicKey, SOL_AIRDROP_AMOUNT)
   ]);
 
   const latestBlockhash = await connection.getLatestBlockhash();
@@ -115,7 +127,7 @@ export async function createTestAccounts(
     paymentTokenMint,
     subscriberTokenAccount,
     payer,
-    100000000 // 100 USDC
+    TOKEN_MINT_AMOUNT // 1000 tokens
   );
 
   return {
@@ -142,13 +154,13 @@ export function derivePdas(
   subscriptionPda: PublicKey;
 } {
   const [subscriptionManagerPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("subscription_manager")],
+    [Buffer.from(SUBSCRIPTION_MANAGER_SEED)],
     programId
   );
 
   const [subscriptionPlanPda] = PublicKey.findProgramAddressSync(
     [
-      Buffer.from("subscription_plan"),
+      Buffer.from(SUBSCRIPTION_PLAN_SEED),
       provider.toBuffer(),
       Buffer.from(planId)
     ],
@@ -157,7 +169,7 @@ export function derivePdas(
 
   const [providerVaultPda] = PublicKey.findProgramAddressSync(
     [
-      Buffer.from("provider_vault"),
+      Buffer.from(PROVIDER_VAULT_SEED),
       provider.toBuffer(),
       Buffer.from(planId)
     ],
@@ -166,7 +178,7 @@ export function derivePdas(
 
   const [subscriptionPda] = PublicKey.findProgramAddressSync(
     [
-      Buffer.from("subscription"),
+      Buffer.from(SUBSCRIPTION_SEED),
       subscriber.toBuffer(),
       subscriptionPlanPda.toBuffer()
     ],
