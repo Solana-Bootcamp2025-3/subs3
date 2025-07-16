@@ -4,7 +4,7 @@ import { BN } from "@coral-xyz/anchor";
 export interface SolanaConfig {
   rpcUrl: string;
   programId: string;
-  privateKey?: string;
+  //privateKey?: string;
 }
 
 export interface SubscriptionPlanData {
