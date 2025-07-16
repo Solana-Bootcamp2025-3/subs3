@@ -26,6 +26,8 @@ pub enum SubscriptionError {
     InsufficientFunds,
     #[msg("Arithmetic overflow detected")]
     ArithmeticOverflow,
+    #[msg("Arithmetic underflow detected")]
+    ArithmeticUnderflow,
     #[msg("Invalid token mint - must be a valid SPL Token mint")]
     InvalidTokenMint,
     #[msg("Subscription already exists for this subscriber and plan")]

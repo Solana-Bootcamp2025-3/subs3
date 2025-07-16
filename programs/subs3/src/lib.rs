@@ -223,4 +223,35 @@ pub mod subs3 {
 
         Ok(())
     }
+
+    pub fn cancel_subscription(ctx: Context<CancelSubscription>) -> Result<()> {
+        let subscription = &mut ctx.accounts.subscription;
+        let plan = &mut ctx.accounts.subscription_plan;
+        let manager = &mut ctx.accounts.subscription_manager;
+
+        require!(subscription.is_active, SubscriptionError::SubscriptionInactive);
+        
+        // Prevent providers from canceling their own plans
+        require!(
+            ctx.accounts.subscriber.key() != plan.provider,
+            SubscriptionError::Unauthorized
+        );
+
+        subscription.is_active = false;
+        subscription.cancelled_at = Some(Clock::get()?.unix_timestamp);
+        plan.current_subscribers = plan.current_subscribers
+            .checked_sub(1)
+            .ok_or(SubscriptionError::ArithmeticUnderflow)?;
+        manager.total_subscriptions = manager.total_subscriptions
+            .checked_sub(1)
+            .ok_or(SubscriptionError::ArithmeticUnderflow)?;
+
+        emit!(SubscriptionCancelled {
+            subscriber: subscription.subscriber,
+            subscription_plan: subscription.subscription_plan,
+            cancelled_at: subscription.cancelled_at.unwrap(),
+        });
+
+        Ok(())
+    }
 }
