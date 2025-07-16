@@ -33,3 +33,16 @@ pub struct SubscriptionCancelled {
     pub subscription_plan: Pubkey,
     pub cancelled_at: i64,
 }
+
+#[event]
+pub struct SubscriptionPlanUpdated {
+    pub provider: Pubkey,
+    pub plan_id: String,
+    pub name: String,
+    pub description: String,
+    pub price_per_period: u64,
+    pub period_duration_seconds: i64,
+    pub max_subscribers: Option<u32>,
+    pub is_active: bool,
+    pub updated_at: i64,
+}

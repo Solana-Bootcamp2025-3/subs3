@@ -88,3 +88,17 @@ pub struct ResumeSubscription<'info> {
     pub subscription_plan: Account<'info, SubscriptionPlan>,
     pub subscriber: Signer<'info>,
 }
+
+#[derive(Accounts)]
+pub struct UpdateSubscriptionPlan<'info> {
+    #[account(
+        mut,
+        has_one = provider,
+        constraint = subscription_plan.is_active @ SubscriptionError::PlanInactive,
+        seeds = [SUBSCRIPTION_PLAN_SEED, subscription_plan.provider.as_ref(), subscription_plan.plan_id.as_bytes()],
+        bump = subscription_plan.bump
+    )]
+    pub subscription_plan: Account<'info, SubscriptionPlan>,
+    
+    pub provider: Signer<'info>,
+}

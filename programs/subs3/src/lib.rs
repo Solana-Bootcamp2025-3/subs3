@@ -223,4 +223,87 @@ pub mod subs3 {
 
         Ok(())
     }
+
+    /// Update a subscription plan (Provider function)
+    /// Allows subscription plan providers to modify their existing plans with comprehensive
+    /// validation and security checks to ensure data integrity and prevent unauthorized access.
+    /// 
+    /// Security Features:
+    /// - Provider Authorization: Only the plan provider can update their own plans
+    /// - Active Plan Validation: Only active plans can be updated
+    /// - Subscriber Impact Protection: Prevents changes that would violate existing subscriptions
+    /// - Input Validation: All parameters are validated for length, range, and business logic
+    pub fn update_subscription_plan(
+        ctx: Context<UpdateSubscriptionPlan>,
+        new_name: Option<String>,
+        new_description: Option<String>,
+        new_price_per_period: Option<u64>,
+        new_period_duration_seconds: Option<i64>,
+        new_max_subscribers: Option<u32>,
+        is_active: Option<bool>
+    ) -> Result<()> {
+        let plan = &mut ctx.accounts.subscription_plan;
+        let current_time = Clock::get()?.unix_timestamp;
+        
+        // Validate new_name if provided
+        if let Some(name) = new_name {
+            require!(name.len() <= MAX_NAME_LENGTH, SubscriptionError::NameTooLong);
+            require!(!name.trim().is_empty(), SubscriptionError::NameTooLong);
+            plan.name = name;
+        }
+        
+        // Validate new_description if provided
+        if let Some(description) = new_description {
+            require!(description.len() <= MAX_DESCRIPTION_LENGTH, SubscriptionError::DescriptionTooLong);
+            plan.description = description;
+        }
+        
+        // Validate new_price_per_period if provided
+        if let Some(price) = new_price_per_period {
+            require!(price > 0, SubscriptionError::InvalidPrice);
+            plan.price_per_period = price;
+        }
+        
+        // Validate new_period_duration_seconds if provided
+        if let Some(period) = new_period_duration_seconds {
+            require!(period >= MIN_PERIOD_DURATION, SubscriptionError::InvalidPeriod);
+            require!(period <= MAX_PERIOD_DURATION, SubscriptionError::InvalidPeriod);
+            plan.period_duration_seconds = period;
+        }
+        
+        // Validate new_max_subscribers if provided
+        if let Some(max_subs) = new_max_subscribers {
+            // Ensure new max_subscribers is not less than current subscriber count
+            require!(
+                max_subs >= plan.current_subscribers,
+                SubscriptionError::MaxSubscribersReduction
+            );
+            plan.max_subscribers = Some(max_subs);
+        }
+
+        // Handle plan activation/deactivation
+        if let Some(active) = is_active {
+            // If deactivating plan, ensure no active subscriptions exist
+            // This is a business logic decision - alternatively, you could allow deactivation
+            // and handle existing subscriptions differently
+            if !active && plan.current_subscribers > 0 {
+                require!(false, SubscriptionError::PlanHasActiveSubscriptions);
+            }
+            plan.is_active = active;
+        }
+
+        emit!(SubscriptionPlanUpdated {
+            provider: plan.provider,
+            plan_id: plan.plan_id.clone(),
+            name: plan.name.clone(),
+            description: plan.description.clone(),
+            price_per_period: plan.price_per_period,
+            period_duration_seconds: plan.period_duration_seconds,
+            max_subscribers: plan.max_subscribers,
+            is_active: plan.is_active,
+            updated_at: current_time
+        });
+
+        Ok(())
+    }
 }

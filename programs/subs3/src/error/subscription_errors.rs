@@ -32,4 +32,8 @@ pub enum SubscriptionError {
     SubscriptionAlreadyExists,
     #[msg("Unauthorized access - invalid authority")]
     Unauthorized,
+    #[msg("Cannot reduce max subscribers below current subscriber count")]
+    MaxSubscribersReduction,
+    #[msg("Cannot deactivate plan with active subscriptions")]
+    PlanHasActiveSubscriptions,
 }
