@@ -1,5 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import * as dotenv from "dotenv";
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -18,15 +19,22 @@ import {
   ProcessPaymentSchema,
   GetSubscriptionSchema,
   GetSubscriberSubscriptionsSchema,
-  GetSubscriptionAddressSchema
+  GetSubscriptionAddressSchema,
+  BuildInitializeManagerTxSchema,
+  BuildCreateSubscriptionPlanTxSchema,
+  BuildSubscribeTxSchema,
+  BuildProcessPaymentTxSchema,
+  ExecuteTransactionSchema,
+  GetWalletSchema
 } from "./tools/subscription-tools.js";
 import { SolanaConfig } from "./utils/types.js";
+import express from "express";
 
 // Load environment variables
 dotenv.config();
 
 // Validate required environment variables
-const requiredEnvVars = ['SOLANA_RPC_URL', 'SOLANA_PROGRAM_ID', 'SOLANA_PRIVATE_KEY'];
+const requiredEnvVars = ['SOLANA_RPC_URL', 'SOLANA_PROGRAM_ID', 'SOLANA_PRIVATE_KEY', 'PORT', 'AUTH_TOKEN', 'AUTH_HEADER'];
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
 if (missingEnvVars.length > 0) {
@@ -45,7 +53,6 @@ if (!rpcUrl.startsWith('http://') && !rpcUrl.startsWith('https://')) {
 const solanaConfig: SolanaConfig = {
   rpcUrl: process.env.SOLANA_RPC_URL!,
   programId: process.env.SOLANA_PROGRAM_ID!,
-  privateKey: process.env.SOLANA_PRIVATE_KEY!,
 };
 
 // Initialize Solana client and tools
@@ -112,7 +119,7 @@ server.setRequestHandler(
         {
           name: "get_wallet_info",
           description: "Get information about the current wallet being used as provider.",
-          inputSchema: zodToJsonSchema(InitializeManagerSchema), // Empty schema
+          inputSchema: zodToJsonSchema(GetWalletSchema), // Empty schema
         },
         {
           name: "subscribe",
@@ -138,6 +145,31 @@ server.setRequestHandler(
           name: "get_subscription_address",
           description: "Calculate the program-derived address (PDA) for a subscription given subscriber and plan address.",
           inputSchema: zodToJsonSchema(GetSubscriptionAddressSchema),
+        },
+        {
+          name: "build_initialize_manager_tx",
+          description: "Build an unsigned transaction to initialize the subscription manager. Returns a transaction ready for signing.",
+          inputSchema: zodToJsonSchema(BuildInitializeManagerTxSchema),
+        },
+        {
+          name: "build_create_subscription_plan_tx",
+          description: "Build an unsigned transaction to create a new subscription plan. Returns a transaction ready for signing.",
+          inputSchema: zodToJsonSchema(BuildCreateSubscriptionPlanTxSchema),
+        },
+        {
+          name: "build_subscribe_tx",
+          description: "Build an unsigned transaction to subscribe to a plan. Returns a transaction ready for signing.",
+          inputSchema: zodToJsonSchema(BuildSubscribeTxSchema),
+        },
+        {
+          name: "build_process_payment_tx",
+          description: "Build an unsigned transaction to process a payment. Returns a transaction ready for signing.",
+          inputSchema: zodToJsonSchema(BuildProcessPaymentTxSchema),
+        },
+        {
+          name: "execute_transaction",
+          description: "Execute a signed transaction that was previously built using one of the build_*_tx tools.",
+          inputSchema: zodToJsonSchema(ExecuteTransactionSchema),
         }
       ]
     }
@@ -153,104 +185,87 @@ server.setRequestHandler(
       }
 
       switch (request.params.name) {
-        case "initialize_manager": {
-          const result = await subscriptionTools.initializeManager();
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
-        }
-
-        case "create_subscription_plan": {
-          const args = CreateSubscriptionPlanSchema.parse(request.params.arguments);
-          const result = await subscriptionTools.createSubscriptionPlan(args);
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
-        }
 
         case "get_subscription_manager": {
           const result = await subscriptionTools.getSubscriptionManager();
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
+          return result;
         }
 
         case "get_subscription_plan": {
           const args = GetSubscriptionPlanSchema.parse(request.params.arguments);
           const result = await subscriptionTools.getSubscriptionPlan(args);
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
+          return result;
         }
 
         case "get_provider_plans": {
           const args = GetProviderPlansSchema.parse(request.params.arguments);
           const result = await subscriptionTools.getProviderPlans(args);
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
+          return result;
         }
 
         case "get_plan_address": {
           const args = GetPlanAddressSchema.parse(request.params.arguments);
           const result = await subscriptionTools.getPlanAddress(args);
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
+          return result;
         }
 
         case "get_period_durations": {
           const result = subscriptionTools.getPeriodDurations();
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
+          return result;
         }
 
         case "get_wallet_info": {
-          const result = subscriptionTools.getWalletInfo();
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
-        }
-
-        case "subscribe": {
-          const args = SubscribeSchema.parse(request.params.arguments);
-          const result = await subscriptionTools.subscribe(args);
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
-        }
-
-        case "process_payment": {
-          const args = ProcessPaymentSchema.parse(request.params.arguments);
-          const result = await subscriptionTools.processPayment(args);
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
+          const args = GetWalletSchema.parse(request.params.arguments);
+          const result = subscriptionTools.getWalletInfo(args);
+          return result;
         }
 
         case "get_subscription": {
           const args = GetSubscriptionSchema.parse(request.params.arguments);
           const result = await subscriptionTools.getSubscription(args);
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
+          return result;
         }
 
         case "get_subscriber_subscriptions": {
           const args = GetSubscriberSubscriptionsSchema.parse(request.params.arguments);
           const result = await subscriptionTools.getSubscriberSubscriptions(args);
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
+          return result;
         }
 
         case "get_subscription_address": {
           const args = GetSubscriptionAddressSchema.parse(request.params.arguments);
           const result = await subscriptionTools.getSubscriptionAddress(args);
-          return {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          };
+          return result;
+        }
+
+        case "build_initialize_manager_tx": {
+          const args = BuildInitializeManagerTxSchema.parse(request.params.arguments);
+          const result = await subscriptionTools.buildInitializeManagerTransaction(args);
+          return result;
+        }
+
+        case "build_create_subscription_plan_tx": {
+          const args = BuildCreateSubscriptionPlanTxSchema.parse(request.params.arguments);
+          const result = await subscriptionTools.buildCreateSubscriptionPlanTransaction(args);
+          return result;
+        }
+
+        case "build_subscribe_tx": {
+          const args = BuildSubscribeTxSchema.parse(request.params.arguments);
+          const result = await subscriptionTools.buildSubscribeTransaction(args);
+          return result;
+        }
+
+        case "build_process_payment_tx": {
+          const args = BuildProcessPaymentTxSchema.parse(request.params.arguments);
+          const result = await subscriptionTools.buildProcessPaymentTransaction(args);
+          return result;
+        }
+
+        case "execute_transaction": {
+          const args = ExecuteTransactionSchema.parse(request.params.arguments);
+          const result = await subscriptionTools.executeTransaction(args);
+          return result;
         }
 
         default:
@@ -271,4 +286,73 @@ async function runServer() {
   console.error("Solana Subscription MCP Server running on stdio");
 }
 
-runServer().catch(console.error);
+//runServer().catch(console.error);
+
+
+const app = express();
+app.use(express.json());
+
+// Apply authentication middleware to all routes
+app.use(authenticateRequest);
+
+// Store transports for each session type
+const transports = {
+  sse: {} as Record<string, SSEServerTransport>
+};
+
+// Legacy SSE endpoint for older clients
+app.get('/sse', async (req, res) => {
+  // Create SSE transport for legacy clients
+  const transport = new SSEServerTransport('/messages', res);
+  transports.sse[transport.sessionId] = transport;
+  
+  res.on("close", () => {
+    delete transports.sse[transport.sessionId];
+  });
+  
+  await server.connect(transport);
+});
+
+// Legacy message endpoint for older clients
+app.post('/messages', async (req, res) => {
+  const sessionId = req.query.sessionId as string;
+  const transport = transports.sse[sessionId];
+  if (transport) {
+    await transport.handlePostMessage(req, res, req.body);
+  } else {
+    res.status(400).send('No transport found for sessionId');
+  }
+});
+
+
+// Authentication configuration
+const AUTH_TOKEN = process.env.AUTH_TOKEN!;
+const AUTH_HEADER = process.env.AUTH_HEADER!;
+
+// Authentication middleware
+function authenticateRequest(req: any, res: any, next: any) {
+  const authHeader = req.headers[AUTH_HEADER];
+  
+  if (!authHeader) {
+    return res.status(401).json({ 
+      error: 'Missing authentication header',
+      required_header: AUTH_HEADER 
+    });
+  }
+  
+  if (authHeader !== AUTH_TOKEN) {
+    return res.status(403).json({ 
+      error: 'Invalid authentication token' 
+    });
+  }
+  
+  next();
+}
+
+// Start the server
+const PORT = process.env.PORT!;
+
+app.listen(PORT, () => {
+  console.log(`Solana Subscription MCP Server running on port ${PORT}`);
+  console.log(`Authentication required: ${AUTH_HEADER} header`);
+});
