@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PublicKey } from "@solana/web3.js";
 import { SolanaSubscriptionClient } from "../client/subscription-client";
 import { CreateSubscriptionPlanParams } from "../utils/types";
 import { formatPeriodDuration, formatTimestamp, PERIOD_DURATIONS } from "../utils/subscription-helpers";
@@ -23,7 +24,7 @@ export const GetSubscriptionPlanSchema = z.object({
 });
 
 export const GetProviderPlansSchema = z.object({
-  providerAddress: z.string().optional().describe("Provider's public key (defaults to current wallet)")
+  providerAddress: z.string().describe("Provider's public key (defaults to current wallet)")
 });
 
 export const GetPlanAddressSchema = z.object({
@@ -40,12 +41,16 @@ export const ProcessPaymentSchema = z.object({
   subscriberTokenAccount: z.string().describe("Subscriber's token account address containing payment tokens")
 });
 
+export const GetWalletSchema = z.object({
+  walletAddress: z.string().describe("Public key address of the wallet")
+});
+
 export const GetSubscriptionSchema = z.object({
   subscriptionAddress: z.string().describe("Public key address of the subscription")
 });
 
 export const GetSubscriberSubscriptionsSchema = z.object({
-  subscriberAddress: z.string().optional().describe("Subscriber's public key (defaults to current wallet)")
+  subscriberAddress: z.string().describe("Subscriber's public key (defaults to current wallet)")
 });
 
 export const GetSubscriptionAddressSchema = z.object({
@@ -53,42 +58,42 @@ export const GetSubscriptionAddressSchema = z.object({
   planAddress: z.string().describe("Subscription plan address")
 });
 
+// Unsigned transaction builder schemas
+export const BuildInitializeManagerTxSchema = z.object({
+  authority: z.string().describe("Authority public key for the subscription manager")
+});
+
+export const BuildCreateSubscriptionPlanTxSchema = z.object({
+  planId: z.string().min(1).max(32).describe("Unique identifier for the subscription plan"),
+  name: z.string().min(1).max(100).describe("Display name for the subscription plan"),
+  description: z.string().min(1).max(500).describe("Description of what the subscription includes"),
+  pricePerPeriod: z.number().int().positive().describe("Price per billing period in smallest token units"),
+  periodDurationSeconds: z.number().int().positive().describe("Duration of each billing period in seconds"),
+  paymentTokenMint: z.string().describe("Public key of the SPL token mint for payments"),
+  maxSubscribers: z.number().int().positive().optional().describe("Maximum number of subscribers (optional)"),
+  provider: z.string().describe("Provider's public key")
+});
+
+export const BuildSubscribeTxSchema = z.object({
+  planAddress: z.string().describe("Public key address of the subscription plan to subscribe to"),
+  subscriber: z.string().describe("Subscriber's public key")
+});
+
+export const BuildProcessPaymentTxSchema = z.object({
+  subscriptionAddress: z.string().describe("Public key address of the subscription to process payment for"),
+  subscriberTokenAccount: z.string().describe("Subscriber's token account address containing payment tokens"),
+  subscriber: z.string().describe("Subscriber's public key")
+});
+
+// Transaction execution schema (after signing)
+export const ExecuteTransactionSchema = z.object({
+  transactionHash: z.string().describe("Signed transaction hash to execute"),
+  transactionType: z.enum(["initialize_manager", "create_subscription_plan", "subscribe", "process_payment"]).describe("Type of transaction being executed"),
+  metadata: z.any().optional().describe("Additional metadata for the transaction")
+});
+
 export class SubscriptionTools {
   constructor(private client: SolanaSubscriptionClient) {}
-
-  /**
-   * Create a new subscription plan
-   */
-  async createSubscriptionPlan(params: z.infer<typeof CreateSubscriptionPlanSchema>): Promise<any> {
-    try {
-      const result = await this.client.createSubscriptionPlan(params);
-      
-      return {
-        success: true,
-        message: "Subscription plan created successfully",
-        data: {
-          signature: result.signature,
-          planAddress: result.planAddress,
-          vaultAddress: result.vaultAddress,
-          planDetails: {
-            planId: params.planId,
-            name: params.name,
-            description: params.description,
-            pricePerPeriod: params.pricePerPeriod,
-            periodDuration: formatPeriodDuration(params.periodDurationSeconds),
-            paymentToken: params.paymentTokenMint,
-            maxSubscribers: params.maxSubscribers || "Unlimited",
-            provider: this.client.getWalletAddress()
-          }
-        }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: `Failed to create subscription plan: ${error instanceof Error ? error.message : String(error)}`
-      };
-    }
-  }
 
   /**
    * Get all subscription plans for a provider
@@ -101,7 +106,7 @@ export class SubscriptionTools {
         success: true,
         message: `Found ${plans.length} subscription plan(s)`,
         data: {
-          providerAddress: params.providerAddress || this.client.getWalletAddress(),
+          providerAddress: params.providerAddress,
           totalPlans: plans.length,
           plans: plans.map(plan => ({
             address: plan.address,
@@ -284,7 +289,7 @@ export class SubscriptionTools {
         success: true,
         message: `Found ${subscriptions.length} subscription(s)`,
         data: {
-          subscriberAddress: params.subscriberAddress || this.client.getWalletAddress(),
+          subscriberAddress: params.subscriberAddress,
           totalSubscriptions: subscriptions.length,
           subscriptions: subscriptions.map(sub => ({
             address: sub.address,
@@ -336,103 +341,205 @@ export class SubscriptionTools {
   /**
    * Get current wallet information
    */
-  getWalletInfo(): any {
+  getWalletInfo(params: z.infer<typeof GetWalletSchema>): any {
     return {
       success: true,
       message: "Current wallet information",
       data: {
-        address: this.client.getWalletAddress(),
+        address: params.walletAddress,
         note: "This is the address that will be used as provider for subscription plans"
       }
     };
   }
 
   /**
-   * Initialize the subscription manager
+   * Build initialize manager transaction (unsigned)
    */
-  async initializeManager(): Promise<any> {
+  async buildInitializeManagerTransaction(params: z.infer<typeof BuildInitializeManagerTxSchema>): Promise<any> {
     try {
-      const isInitialized = await this.client.isManagerInitialized();
+      const authority = new PublicKey(params.authority);
+      const transaction = await this.client.buildInitializeManagerTransaction(authority);
+      const preparedTx = await this.client.prepareTransaction(transaction, authority);
       
-      if (isInitialized) {
-        return {
-          success: false,
-          message: "Subscription manager is already initialized",
-          data: await this.client.getSubscriptionManager()
-        };
+      // Serialize transaction for signing
+      const serializedTx = preparedTx.serialize({ requireAllSignatures: false }).toString('base64');
+      
+      return {
+        success: true,
+        message: "Initialize manager transaction prepared for signing",
+        requiresSignature: true,
+        data: {
+          transactionType: "initialize_manager",
+          serializedTransaction: serializedTx,
+          authority: params.authority,
+          instructions: "Please sign this transaction to initialize the subscription manager",
+          metadata: {
+            authority: params.authority
+          }
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to build initialize manager transaction: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+
+  /**
+   * Build create subscription plan transaction (unsigned)
+   */
+  async buildCreateSubscriptionPlanTransaction(params: z.infer<typeof BuildCreateSubscriptionPlanTxSchema>): Promise<any> {
+    try {
+      const provider = new PublicKey(params.provider);
+      const { transaction, planAddress, vaultAddress } = await this.client.buildCreateSubscriptionPlanTransaction(params, provider);
+      const preparedTx = await this.client.prepareTransaction(transaction, provider);
+      
+      // Serialize transaction for signing
+      const serializedTx = preparedTx.serialize({ requireAllSignatures: false }).toString('base64');
+      
+      return {
+        success: true,
+        message: "Create subscription plan transaction prepared for signing",
+        requiresSignature: true,
+        data: {
+          transactionType: "create_subscription_plan",
+          serializedTransaction: serializedTx,
+          provider: params.provider,
+          instructions: `Please sign this transaction to create subscription plan "${params.name}"`,
+          planAddress,
+          vaultAddress,
+          metadata: {
+            planId: params.planId,
+            name: params.name,
+            description: params.description,
+            pricePerPeriod: params.pricePerPeriod,
+            periodDurationSeconds: params.periodDurationSeconds,
+            paymentTokenMint: params.paymentTokenMint,
+            maxSubscribers: params.maxSubscribers,
+            provider: params.provider,
+            planAddress,
+            vaultAddress
+          }
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to build create subscription plan transaction: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+
+  /**
+   * Build subscribe transaction (unsigned)
+   */
+  async buildSubscribeTransaction(params: z.infer<typeof BuildSubscribeTxSchema>): Promise<any> {
+    try {
+      const subscriber = new PublicKey(params.subscriber);
+      const { transaction, subscriptionAddress } = await this.client.buildSubscribeTransaction(params.planAddress, subscriber);
+      const preparedTx = await this.client.prepareTransaction(transaction, subscriber);
+      
+      // Serialize transaction for signing
+      const serializedTx = preparedTx.serialize({ requireAllSignatures: false }).toString('base64');
+      
+      return {
+        success: true,
+        message: "Subscribe transaction prepared for signing",
+        requiresSignature: true,
+        data: {
+          transactionType: "subscribe",
+          serializedTransaction: serializedTx,
+          subscriber: params.subscriber,
+          instructions: "Please sign this transaction to subscribe to the plan",
+          subscriptionAddress,
+          metadata: {
+            planAddress: params.planAddress,
+            subscriber: params.subscriber,
+            subscriptionAddress
+          }
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to build subscribe transaction: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+
+  /**
+   * Build process payment transaction (unsigned)
+   */
+  async buildProcessPaymentTransaction(params: z.infer<typeof BuildProcessPaymentTxSchema>): Promise<any> {
+    try {
+      const subscriber = new PublicKey(params.subscriber);
+      const { transaction, amount } = await this.client.buildProcessPaymentTransaction(
+        params.subscriptionAddress,
+        params.subscriberTokenAccount,
+        subscriber
+      );
+      const preparedTx = await this.client.prepareTransaction(transaction, subscriber);
+      
+      // Serialize transaction for signing
+      const serializedTx = preparedTx.serialize({ requireAllSignatures: false }).toString('base64');
+      
+      return {
+        success: true,
+        message: "Process payment transaction prepared for signing",
+        requiresSignature: true,
+        data: {
+          transactionType: "process_payment",
+          serializedTransaction: serializedTx,
+          subscriber: params.subscriber,
+          instructions: `Please sign this transaction to process payment of ${amount} tokens`,
+          amount,
+          metadata: {
+            subscriptionAddress: params.subscriptionAddress,
+            subscriberTokenAccount: params.subscriberTokenAccount,
+            subscriber: params.subscriber,
+            amount
+          }
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to build process payment transaction: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+
+  /**
+   * Execute a signed transaction
+   */
+  async executeTransaction(params: z.infer<typeof ExecuteTransactionSchema>): Promise<any> {
+    try {
+      // Deserialize and send the signed transaction
+      const transactionBuffer = Buffer.from(params.transactionHash, 'base64');
+      const signature = await this.client.sendRawTransaction(transactionBuffer);
+      
+      // Return success with transaction-specific data
+      let resultData: any = {
+        signature,
+        transactionType: params.transactionType,
+        confirmed: true
+      };
+
+      // Add transaction-specific data from metadata
+      if (params.metadata) {
+        resultData = { ...resultData, ...params.metadata };
       }
 
-      const result = await this.client.initializeManager();
-      
       return {
         success: true,
-        message: "Subscription manager initialized successfully",
-        data: {
-          signature: result.signature,
-          managerAddress: result.managerAddress,
-          authority: this.client.getWalletAddress()
-        }
+        message: `Transaction executed successfully: ${params.transactionType}`,
+        data: resultData
       };
     } catch (error) {
       return {
         success: false,
-        message: `Failed to initialize manager: ${error instanceof Error ? error.message : String(error)}`
-      };
-    }
-  }
-
-  /**
-   * Process payment for a subscription
-   */
-  async processPayment(params: z.infer<typeof ProcessPaymentSchema>): Promise<any> {
-    try {
-      const result = await this.client.processPayment(
-        params.subscriptionAddress,
-        params.subscriberTokenAccount
-      );
-      
-      return {
-        success: true,
-        message: "Payment processed successfully",
-        data: {
-          signature: result.signature,
-          subscriptionAddress: params.subscriptionAddress,
-          amount: result.amount,
-          paymentNumber: result.paymentNumber,
-          nextPaymentDue: formatTimestamp(result.nextPaymentDue)
-        }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: `Failed to process payment: ${error instanceof Error ? error.message : String(error)}`
-      };
-    }
-  }
-
-  /**
-   * Subscribe to a subscription plan
-   */
-  async subscribe(params: z.infer<typeof SubscribeSchema>): Promise<any> {
-    try {
-      const result = await this.client.subscribe(params.planAddress);
-      
-      return {
-        success: true,
-        message: "Successfully subscribed to plan",
-        data: {
-          signature: result.signature,
-          subscriptionAddress: result.subscriptionAddress,
-          subscriber: this.client.getWalletAddress(),
-          planAddress: params.planAddress,
-          startTime: formatTimestamp(result.startTime),
-          nextPaymentDue: formatTimestamp(result.nextPaymentDue)
-        }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: `Failed to subscribe: ${error instanceof Error ? error.message : String(error)}`
+        message: `Failed to execute transaction: ${error instanceof Error ? error.message : String(error)}`
       };
     }
   }

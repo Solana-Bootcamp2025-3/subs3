@@ -10,7 +10,7 @@ describe("subs3", () => {
 
   it("Is initialized!", async () => {
     // Add your test here.
-    const tx = await program.methods.initialize().rpc();
+    const tx = await program.methods.initializeManager().rpc();
     console.log("Your transaction signature", tx);
   });
 });

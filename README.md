@@ -35,7 +35,7 @@ Subs3 allows service providers to create subscription-based offerings on Solana.
 - [Rust](https://rustup.rs/) 
 - [Solana CLI](https://docs.solana.com/cli/install-solana-cli-tools)
 - [Anchor](https://www.anchor-lang.com/docs/installation)
-- [Node.js](https://nodejs.org/) (for testing)
+- [Node.js](https://nodejs.org/)
 
 ### Installation
 
@@ -67,6 +67,66 @@ anchor test
 ```bash
 anchor deploy
 ```
+3. Read the deployed program address:
+  - After deployment, find the program ID in the Anchor CLI output or in `target/deploy/subs3-keypair.json`.
+  - Copy the program ID (a long base58 string).
+
+4. Update `lib.rs`:
+  - Open `programs/subs3/src/lib.rs`.
+  - Replace the existing `declare_id!` macro with your new program ID:
+```rust
+declare_id!("YOUR_NEW_PROGRAM_ID_HERE");
+```
+
+5. Deploy again to ensure the program ID matches:
+```bash
+anchor deploy
+```
+
+## Running the MCP Server and Frontend
+
+### Start the MCP Server
+
+From the `app/mcps/subs3` directory:
+
+1. Install dependencies:
+```bash
+npm install
+```
+
+2. Configure `.env`
+
+3. Start the MCP server:
+```bash
+npm run dev
+```
+
+This starts the backend MCP server for handling subscription logic.
+
+### Start the Frontend
+
+In a separate terminal, From the `app/gemini-chatbot` directory, run:
+
+1. Install dependencies:
+```bash
+pnpm install
+```
+
+2. Configure `.env`
+
+3. Run database migrations (if required):
+```bash
+pnpm tsx db/migrate.ts
+```
+
+4. Start the frontend:
+```bash
+pnpm run dev
+```
+
+This launches the frontend app (typically at [http://localhost:3000](http://localhost:3000)).
+
+Make sure both the MCP server and frontend are running for full functionality.
 
 ## Usage Example
 

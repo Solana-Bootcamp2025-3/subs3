@@ -1,4 +1,4 @@
-import { Connection, PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
+import { Connection, PublicKey, Keypair, SystemProgram, Transaction } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import * as anchor from "@coral-xyz/anchor";
 import { Program, BN } from "@coral-xyz/anchor";
@@ -27,25 +27,19 @@ import {
 export class SolanaSubscriptionClient {
   private connection: Connection;
   private program: Program<Subs3>;
-  private wallet: anchor.Wallet;
   private programId: PublicKey;
 
   constructor(config: SolanaConfig) {
     this.connection = new Connection(config.rpcUrl, 'confirmed');
     this.programId = toPublicKey(config.programId);
-    
-    if (config.privateKey) {
-      const keypair = Keypair.fromSecretKey(
-        Buffer.from(config.privateKey, 'base64')
-      );
-      this.wallet = new anchor.Wallet(keypair);
-    } else {
-      throw new Error("Private key is required for wallet operations");
-    }
+
+    // Create a dummy wallet for read-only operations when no private key is provided
+    const dummyKeypair = Keypair.generate();
+    const dummyWallet = new anchor.Wallet(dummyKeypair);
 
     const provider = new anchor.AnchorProvider(
       this.connection,
-      this.wallet,
+      dummyWallet,
       { commitment: 'confirmed' }
     );
     
@@ -54,9 +48,9 @@ export class SolanaSubscriptionClient {
   }
 
   /**
-   * Initialize the subscription manager (one-time setup)
+   * Build initialize manager transaction (unsigned)
    */
-  async initializeManager(): Promise<{ signature: string; managerAddress: string }> {
+  async buildInitializeManagerTransaction(authority: PublicKey): Promise<Transaction> {
     const [subscriptionManagerPda] = getSubscriptionManagerPda(this.programId);
 
     try {
@@ -64,28 +58,24 @@ export class SolanaSubscriptionClient {
         .initializeManager()
         .accountsStrict({
             subscriptionManager: subscriptionManagerPda,
-            authority: this.wallet.publicKey,
+            authority: authority,
             systemProgram: SystemProgram.programId
         })
-        .rpc();
+        .transaction();
 
-      return {
-        signature: tx,
-        managerAddress: subscriptionManagerPda.toBase58()
-      };
+      return tx;
     } catch (error) {
-      throw new Error(`Failed to initialize manager: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to build initialize manager transaction: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   /**
-   * Create a new subscription plan
+   * Build create subscription plan transaction (unsigned)
    */
-  async createSubscriptionPlan(params: CreateSubscriptionPlanParams): Promise<{
-    signature: string;
-    planAddress: string;
-    vaultAddress: string;
-  }> {
+  async buildCreateSubscriptionPlanTransaction(
+    params: CreateSubscriptionPlanParams, 
+    provider: PublicKey
+  ): Promise<{ transaction: Transaction; planAddress: string; vaultAddress: string }> {
     // Validate inputs
     if (!validatePlanId(params.planId)) {
       throw new Error("Invalid plan ID: must be 1-32 characters");
@@ -99,12 +89,12 @@ export class SolanaSubscriptionClient {
 
     const [subscriptionManagerPda] = getSubscriptionManagerPda(this.programId);
     const [subscriptionPlanPda] = getSubscriptionPlanPda(
-      this.wallet.publicKey,
+      provider,
       params.planId,
       this.programId
     );
     const [providerVaultPda] = getProviderVaultPda(
-      this.wallet.publicKey,
+      provider,
       params.planId,
       this.programId
     );
@@ -112,7 +102,7 @@ export class SolanaSubscriptionClient {
     const paymentTokenMint = toPublicKey(params.paymentTokenMint);
 
     try {
-      const signature = await this.program.methods
+      const transaction = await this.program.methods
         .createSubscriptionPlan(
           params.planId,
           params.name,
@@ -122,7 +112,7 @@ export class SolanaSubscriptionClient {
           params.maxSubscribers || null
         )
         .accountsStrict({
-          provider: this.wallet.publicKey,
+          provider: provider,
           subscriptionManager: subscriptionManagerPda,
           subscriptionPlan: subscriptionPlanPda,
           providerVault: providerVaultPda,
@@ -130,15 +120,15 @@ export class SolanaSubscriptionClient {
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        .rpc();
+        .transaction();
 
       return {
-        signature,
+        transaction,
         planAddress: subscriptionPlanPda.toBase58(),
         vaultAddress: providerVaultPda.toBase58()
       };
     } catch (error) {
-      throw new Error(`Failed to create subscription plan: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to build create subscription plan transaction: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -171,8 +161,12 @@ export class SolanaSubscriptionClient {
   /**
    * Get all subscription plans for a provider
    */
-  async getProviderPlans(providerAddress?: string): Promise<SubscriptionPlanInfo[]> {
-    const provider = providerAddress ? toPublicKey(providerAddress) : this.wallet.publicKey;
+  async getProviderPlans(providerAddress: string): Promise<SubscriptionPlanInfo[]> {
+    const provider = toPublicKey(providerAddress);
+    
+    if (!provider) {
+      throw new Error("Provider address is required when no wallet is configured");
+    }
     
     try {
       const plans = await this.program.account.subscriptionPlan.all([
@@ -222,61 +216,56 @@ export class SolanaSubscriptionClient {
   /**
    * Get current wallet address
    */
-  getWalletAddress(): string {
-    return this.wallet.publicKey.toBase58();
+  getWalletAddress(wallet: string): string {
+    return toPublicKey(wallet).toBase58();
   }
 
   /**
-   * Subscribe to a subscription plan
+   * Build subscribe transaction (unsigned)
    */
-  async subscribe(planAddress: string): Promise<{
-    signature: string;
+  async buildSubscribeTransaction(planAddress: string, subscriber: PublicKey): Promise<{
+    transaction: Transaction;
     subscriptionAddress: string;
-    startTime: number;
-    nextPaymentDue: number;
   }> {
     const planPda = toPublicKey(planAddress);
     const [subscriptionPda] = getSubscriptionPda(
-      this.wallet.publicKey,
+      subscriber,
       planPda,
       this.programId
     );
     const [subscriptionManagerPda] = getSubscriptionManagerPda(this.programId);
 
     try {
-      const signature = await this.program.methods
+      const transaction = await this.program.methods
         .subscribe()
         .accountsStrict({
           subscription: subscriptionPda,
           subscriptionPlan: planPda,
           subscriptionManager: subscriptionManagerPda,
-          subscriber: this.wallet.publicKey,
+          subscriber: subscriber,
           systemProgram: SystemProgram.programId,
         })
-        .rpc();
+        .transaction();
 
-      // Get the created subscription to return timing info
-      const subscription = await this.program.account.subscription.fetch(subscriptionPda);
-      
       return {
-        signature,
-        subscriptionAddress: subscriptionPda.toBase58(),
-        startTime: subscription.startTime.toNumber(),
-        nextPaymentDue: subscription.nextPaymentDue.toNumber()
+        transaction,
+        subscriptionAddress: subscriptionPda.toBase58()
       };
     } catch (error) {
-      throw new Error(`Failed to subscribe: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to build subscribe transaction: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   /**
-   * Process payment for a subscription
+   * Build process payment transaction (unsigned)
    */
-  async processPayment(subscriptionAddress: string, subscriberTokenAccount: string): Promise<{
-    signature: string;
+  async buildProcessPaymentTransaction(
+    subscriptionAddress: string, 
+    subscriberTokenAccount: string, 
+    subscriber: PublicKey
+  ): Promise<{
+    transaction: Transaction;
     amount: string;
-    paymentNumber: number;
-    nextPaymentDue: number;
   }> {
     const subscriptionPda = toPublicKey(subscriptionAddress);
     const subscriberTokenPda = toPublicKey(subscriberTokenAccount);
@@ -293,29 +282,24 @@ export class SolanaSubscriptionClient {
         this.programId
       );
 
-      const signature = await this.program.methods
+      const transaction = await this.program.methods
         .processPayment()
         .accountsStrict({
           subscription: subscriptionPda,
           subscriptionPlan: subscription.subscriptionPlan,
           subscriberTokenAccount: subscriberTokenPda,
           providerVault: providerVaultPda,
-          subscriber: this.wallet.publicKey,
+          subscriber: subscriber,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
-        .rpc();
+        .transaction();
 
-      // Get updated subscription for payment info
-      const updatedSubscription = await this.program.account.subscription.fetch(subscriptionPda);
-      
       return {
-        signature,
-        amount: plan.pricePerPeriod.toString(),
-        paymentNumber: updatedSubscription.totalPaymentsMade,
-        nextPaymentDue: updatedSubscription.nextPaymentDue.toNumber()
+        transaction,
+        amount: plan.pricePerPeriod.toString()
       };
     } catch (error) {
-      throw new Error(`Failed to process payment: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to build process payment transaction: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -335,8 +319,12 @@ export class SolanaSubscriptionClient {
   /**
    * Get all subscriptions for a subscriber
    */
-  async getSubscriberSubscriptions(subscriberAddress?: string): Promise<SubscriptionInfo[]> {
-    const subscriber = subscriberAddress ? toPublicKey(subscriberAddress) : this.wallet.publicKey;
+  async getSubscriberSubscriptions(subscriberAddress: string): Promise<SubscriptionInfo[]> {
+    const subscriber = toPublicKey(subscriberAddress);
+    
+    if (!subscriber) {
+      throw new Error("Subscriber address is required when no wallet is configured");
+    }
     
     try {
       const subscriptions = await this.program.account.subscription.all([
@@ -367,5 +355,51 @@ export class SolanaSubscriptionClient {
       this.programId
     );
     return subscriptionPda.toBase58();
+  }
+
+  /**
+   * Send a raw signed transaction
+   */
+  async sendRawTransaction(signedTransactionBuffer: Buffer): Promise<string> {
+    try {
+      const signature = await this.connection.sendRawTransaction(signedTransactionBuffer);
+      await this.connection.confirmTransaction(signature, 'confirmed');
+      return signature;
+    } catch (error) {
+      throw new Error(`Failed to send raw transaction: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Get connection for external access
+   */
+  getConnection() {
+    return this.connection;
+  }
+
+  /**
+   * Get recent blockhash for transaction building
+   */
+  async getRecentBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: number }> {
+    try {
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+      return { blockhash, lastValidBlockHeight };
+    } catch (error) {
+      throw new Error(`Failed to get recent blockhash: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Set transaction parameters (blockhash and fee payer)
+   */
+  async prepareTransaction(transaction: Transaction, feePayer: PublicKey): Promise<Transaction> {
+    try {
+      const { blockhash } = await this.connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = feePayer;
+      return transaction;
+    } catch (error) {
+      throw new Error(`Failed to prepare transaction: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }
