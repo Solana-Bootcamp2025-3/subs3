@@ -33,3 +33,10 @@ pub struct SubscriptionCancelled {
     pub subscription_plan: Pubkey,
     pub cancelled_at: i64,
 }
+
+#[event]
+pub struct SubscriptionFundsWithdrawn {
+    pub provider: Pubkey,
+    pub subscription_plan: Pubkey,
+    pub amount: u64,
+}

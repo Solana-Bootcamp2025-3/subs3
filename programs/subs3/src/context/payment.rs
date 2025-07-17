@@ -45,6 +45,7 @@ pub struct ProcessPayment<'info> {
 pub struct WithdrawFunds<'info> {
     #[account(
         has_one = provider,
+        constraint = subscription_plan.is_active @ SubscriptionError::PlanInactive,
         seeds = [SUBSCRIPTION_PLAN_SEED, provider.key().as_ref(), subscription_plan.plan_id.as_bytes()],
         bump = subscription_plan.bump
     )]
@@ -61,7 +62,11 @@ pub struct WithdrawFunds<'info> {
     )]
     pub provider_vault: Account<'info, TokenAccount>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = provider_token_account.owner == provider.key() @ SubscriptionError::Unauthorized,
+        constraint = provider_token_account.mint == subscription_plan.payment_token @ SubscriptionError::InvalidTokenMint
+    )]
     pub provider_token_account: Account<'info, TokenAccount>,
     
     pub provider: Signer<'info>,

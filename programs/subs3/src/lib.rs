@@ -223,4 +223,55 @@ pub mod subs3 {
 
         Ok(())
     }
+
+    /// Withdraw funds from the provider vault
+    /// Allows providers to withdraw accumulated revenue from their vault
+    pub fn withdraw_funds(ctx: Context<WithdrawFunds>, amount: u64) -> Result<()> {
+        let plan = &ctx.accounts.subscription_plan;
+        let provider_vault = &ctx.accounts.provider_vault;
+        let provider = &ctx.accounts.provider;
+
+        // Validate amount is not zero
+        require!(amount > 0, SubscriptionError::InvalidPrice);
+
+        // Ensure the vault has sufficient funds with overflow protection
+        let vault_balance = provider_vault.amount;
+        require!(vault_balance >= amount, SubscriptionError::InsufficientFunds);
+
+        // Prepare signer seeds for PDA authority
+        let provider_key = provider.key();
+        let plan_id_bytes = plan.plan_id.as_bytes();
+        let bump = ctx.bumps.provider_vault;
+        let signer_seeds = &[
+            PROVIDER_VAULT_SEED,
+            provider_key.as_ref(),
+            plan_id_bytes,
+            &[bump],
+        ];
+
+        // Transfer tokens from provider vault to provider's token account
+        // Using PDA as authority with proper signer seeds
+        let transfer_instruction = Transfer {
+            from: provider_vault.to_account_info(),
+            to: ctx.accounts.provider_token_account.to_account_info(),
+            authority: provider_vault.to_account_info(),
+        };
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                transfer_instruction,
+                &[signer_seeds],
+            ),
+            amount,
+        )?;
+
+        emit!(SubscriptionFundsWithdrawn {
+            provider: provider.key(),
+            subscription_plan: plan.key(),
+            amount,
+        });
+
+        Ok(())
+    }
 }

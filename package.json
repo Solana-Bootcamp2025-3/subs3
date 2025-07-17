@@ -16,6 +16,7 @@
     "mocha": "^11.7.1",
     "prettier": "^2.6.2",
     "ts-mocha": "^10.0.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "yarn": "^1.22.22"
   }
 }
